@@ -161,12 +161,13 @@ def filter_old_pr_releases(releases: List[Dict[str, Any]], prefix: str, days_thr
 
 
 @with_retry(max_retries=3, delay=1.0)
-def delete_helm_release(release_name: str, namespace: str) -> None:
+def delete_helm_release(release_name: str, namespace: str, dry_run: bool = False) -> None:
     """Deletes a specific Helm release.
 
     Args:
         release_name: Name of the Helm release to delete
         namespace: Kubernetes namespace
+        dry_run: If True, only simulate the deletion without actually deleting
 
     Raises:
         HelmUninstallError: If the uninstall operation fails
@@ -176,13 +177,17 @@ def delete_helm_release(release_name: str, namespace: str) -> None:
         extra={
             "release": release_name,
             "namespace": namespace,
+            "dry_run": dry_run,
         },
     )
     try:
-        run_command(["helm", "uninstall", release_name, "--namespace", namespace])
+        cmd = ["helm", "uninstall", release_name, "--namespace", namespace]
+        if dry_run:
+            cmd.append("--dry-run")
+        run_command(cmd)
         logger.info(
             "Helm uninstall command ran",
-            extra={"release": release_name},
+            extra={"release": release_name, "dry_run": dry_run},
         )
     except CleanupError as e:
         raise HelmUninstallError(
@@ -193,6 +198,7 @@ def delete_helm_release(release_name: str, namespace: str) -> None:
                 details={
                     "release_name": release_name,
                     "namespace": namespace,
+                    "dry_run": dry_run,
                 },
             ),
         ) from e

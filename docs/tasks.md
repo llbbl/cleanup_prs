@@ -19,8 +19,7 @@
 
 ## Features & Functionality
 
-- [ ] Add support for multiple Kubernetes contexts
-- [ ] Implement dry-run mode
+- [x] Implement dry-run mode
 - [ ] Add interactive confirmation
 - [ ] Add support for custom log formats
 - [ ] Implement log rotation

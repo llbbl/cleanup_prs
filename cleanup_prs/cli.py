@@ -154,12 +154,14 @@ def main() -> int:
         # Handle dry run
         if args.dry_run:
             logger.info("Dry run mode - would delete releases", extra={"releases": old_releases})
+            for release in old_releases:
+                delete_helm_release(release, args.namespace, dry_run=True)
             return 0
 
         # Confirm and delete
         if confirm_deletion(old_releases):
             for release in old_releases:
-                delete_helm_release(release, args.namespace)
+                delete_helm_release(release, args.namespace, dry_run=False)
             logger.info("Successfully deleted all specified releases")
             return 0
         else:
