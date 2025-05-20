@@ -14,7 +14,7 @@ The tool supports:
 
 import argparse
 import sys
-from typing import List
+from typing import List, Optional
 
 from .exceptions import CleanupError
 from .helm import delete_helm_release, filter_old_pr_releases, list_helm_releases
@@ -37,6 +37,7 @@ def parse_args() -> argparse.Namespace:
             - prefix: Release name prefix to match
             - days: Age threshold in days
             - dry_run: Whether to perform a dry run
+            - force: Skip confirmation prompt
             - verbose: Enable verbose logging
             - no_json_logging: Disable JSON logging format
             - log_file: Path to log file
@@ -69,6 +70,12 @@ def parse_args() -> argparse.Namespace:
         help="Show what would be deleted without actually deleting",
     )
     parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -86,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def confirm_deletion(releases: List[str]) -> bool:
+def confirm_deletion(releases: List[str], force: bool = False) -> bool:
     """Ask for user confirmation before deletion.
 
     This function displays the list of releases that will be deleted and prompts
@@ -95,24 +102,40 @@ def confirm_deletion(releases: List[str]) -> bool:
 
     Args:
         releases: List of release names that will be deleted
+        force: If True, skip confirmation and return True
 
     Returns:
-        bool: True if user confirms deletion, False if user cancels
+        bool: True if user confirms deletion or force is True, False if user cancels
+
+    Raises:
+        KeyboardInterrupt: If user interrupts the confirmation prompt
     """
     if not releases:
         return False
 
-    print("\nThe following releases will be deleted:")
-    for release in releases:
-        print(f"  - {release}")
+    if force:
+        logger.warning("Force flag enabled - skipping confirmation")
+        return True
 
-    while True:
-        response = input("\nDo you want to proceed? (y/N): ").lower()
-        if response in ("y", "yes"):
-            return True
-        if response in ("n", "no", ""):
-            return False
-        print("Please answer 'y' or 'n'")
+    print("\n=== Release Cleanup Confirmation ===")
+    print(f"\nFound {len(releases)} releases to delete:")
+    for i, release in enumerate(releases, 1):
+        print(f"  {i}. {release}")
+
+    print("\nWARNING: This action cannot be undone!")
+    print("Type 'delete' to confirm or 'cancel' to abort.")
+
+    try:
+        while True:
+            response = input("\nEnter your choice: ").lower().strip()
+            if response == "delete":
+                return True
+            if response == "cancel":
+                return False
+            print("Please type 'delete' to confirm or 'cancel' to abort")
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        return False
 
 
 def main() -> int:
@@ -159,7 +182,7 @@ def main() -> int:
             return 0
 
         # Confirm and delete
-        if confirm_deletion(old_releases):
+        if confirm_deletion(old_releases, force=args.force):
             for release in old_releases:
                 delete_helm_release(release, args.namespace, dry_run=False)
             logger.info("Successfully deleted all specified releases")

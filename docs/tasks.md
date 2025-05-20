@@ -20,7 +20,7 @@
 ## Features & Functionality
 
 - [x] Implement dry-run mode
-- [ ] Add interactive confirmation
+- [x] Add interactive confirmation
 - [ ] Add support for custom log formats
 - [ ] Implement log rotation
 
