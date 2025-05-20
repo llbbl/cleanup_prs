@@ -14,8 +14,8 @@
 - [x] Add type hints
 - [x] Implement proper error handling strategy
 - [x] Improve logging system
-- [ ] Add code documentation
-- [ ] Implement code formatting and linting
+- [x] Add code documentation
+- [x] Implement code formatting and linting
 
 ## Features & Functionality
 

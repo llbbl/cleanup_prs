@@ -1,3 +1,3 @@
-"""Cleanup PRs - A tool for cleaning up old Helm releases in Kubernetes clusters."""
+"""Cleanup PRs - Tool for cleaning up old Helm releases in K8s clusters."""
 
-__version__ = "0.1.0" 
+__version__ = "0.1.0"

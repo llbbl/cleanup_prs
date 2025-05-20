@@ -13,13 +13,15 @@ pyyaml = "^6.0.2"
 
 [tool.poetry.scripts]
 cleanup-prs = "cleanup_prs.cli:main"
+test = "pytest:main"
+format = "scripts.format:main"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.black]
-line-length = 88
+line-length = 120
 target-version = ['py311']
 include = '\.pyi?$'
 
@@ -33,3 +35,6 @@ black = "^23.7.0"
 isort = "^5.12.0"
 mypy = "^1.5.1"
 flake8 = "^6.1.0"
+
+[tool.flake8]
+max-line-length = 120
