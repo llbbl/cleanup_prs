@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "cleanup-prs"
+version = "0.1.0"
+description = "A tool for cleaning up old Helm releases in Kubernetes clusters"
+authors = ["llbbl <logan@llbbl.com>"]
+readme = "README.md"
+packages = [{include = "cleanup_prs"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+python-json-logger = "^3.3.0"
+pyyaml = "^6.0.2"
+
+[tool.poetry.scripts]
+cleanup-prs = "cleanup_prs.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+black = "^23.7.0"
+isort = "^5.12.0"
+mypy = "^1.5.1"
+flake8 = "^6.1.0"

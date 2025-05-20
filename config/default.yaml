@@ -1,0 +1,22 @@
+# Default configuration for cleanup_old_releases
+
+# Kubernetes settings
+kubernetes:
+  default_namespace: "default"
+  context_required: true
+
+# Helm release settings
+helm:
+  app_name_prefix: "dev"
+  days_threshold: 5
+  verification_sleep_seconds: 20
+
+# Logging settings
+logging:
+  file_name: "cleanup_prs.log"
+  directory: "./logs"
+  rotation:
+    when: "W0"  # Weekly rotation on Monday
+    interval: 1
+    backup_count: 4
+  format: "%(asctime)s | %(levelname)s | %(message)s" 

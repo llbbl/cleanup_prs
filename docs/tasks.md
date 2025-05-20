@@ -1,0 +1,45 @@
+# Cleanup PRs - Task List
+
+## Architecture & Design
+
+- [x] Implement configuration management system
+- [x] Refactor code into modules
+  - [x] Create package structure
+  - [x] Split into logical components (kubernetes, helm, cli)
+  - [x] Implement proper error handling
+  - [x] Add structured logging
+
+## Code Quality & Maintenance
+
+- [x] Add type hints
+- [x] Implement proper error handling strategy
+- [x] Improve logging system
+- [ ] Add code documentation
+- [ ] Implement code formatting and linting
+
+## Features & Functionality
+
+- [ ] Add support for multiple Kubernetes contexts
+- [ ] Implement dry-run mode
+- [ ] Add interactive confirmation
+- [ ] Add support for custom log formats
+- [ ] Implement log rotation
+
+## Documentation & User Experience
+
+- [x] Create comprehensive README
+- [ ] Add usage examples
+- [ ] Create user documentation
+
+## Security & Compliance
+
+- [ ] Implement proper secret management
+- [ ] Add input validation
+- [ ] Implement proper error handling for sensitive data
+- [ ] Add security scanning
+- [ ] Implement proper access control
+
+## Performance & Scalability
+
+- [ ] Optimize for large numbers of releases
+- [ ] Add performance monitoring
