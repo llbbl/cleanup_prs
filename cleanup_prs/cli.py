@@ -11,6 +11,7 @@ The tool supports:
 - Configurable logging
 - Multiple output formats
 - Secure credential management
+- Input validation
 """
 
 import argparse
@@ -19,11 +20,19 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .exceptions import CleanupError
+from .exceptions import CleanupError, ValidationError
 from .helm import delete_helm_release, filter_old_pr_releases, list_helm_releases
 from .kubernetes import set_kubectl_context
 from .logging_config import get_logger, setup_logging
 from .secret_manager import SecretManager
+from .validators import (
+    validate_age_threshold,
+    validate_file_path,
+    validate_kubernetes_name,
+    validate_log_format,
+    validate_release_prefix,
+    validate_rotation_settings,
+)
 
 logger = get_logger(__name__)
 
@@ -145,6 +154,46 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_args(args: argparse.Namespace) -> None:
+    """Validate command line arguments.
+
+    Args:
+        args: Parsed command line arguments
+
+    Raises:
+        ValidationError: If any argument is invalid
+    """
+    # Validate Kubernetes names
+    validate_kubernetes_name(args.context, "Context")
+    validate_kubernetes_name(args.namespace, "Namespace")
+
+    # Validate release prefix
+    validate_release_prefix(args.prefix)
+
+    # Validate age threshold
+    validate_age_threshold(args.days)
+
+    # Validate file paths
+    if args.log_file:
+        validate_file_path(args.log_file)
+    if args.kubeconfig:
+        validate_file_path(args.kubeconfig, must_exist=True, must_be_file=True)
+    if args.helm_config:
+        validate_file_path(args.helm_config, must_exist=True)
+
+    # Validate log format
+    if args.log_format:
+        validate_log_format(args.log_format, not args.no_json_logging)
+
+    # Validate rotation settings
+    validate_rotation_settings(
+        max_bytes=args.max_log_size * 1024 * 1024 if args.max_log_size else None,
+        backup_count=args.log_backup_count,
+        rotate_when=args.rotate_when,
+        rotate_interval=args.rotate_interval,
+    )
+
+
 def confirm_deletion(releases: List[str], force: bool = False) -> bool:
     """Prompt user for confirmation before deleting releases.
 
@@ -176,26 +225,30 @@ def main() -> int:
 
     This function orchestrates the entire cleanup process:
     1. Parses command line arguments
-    2. Sets up logging configuration
-    3. Configures Kubernetes context
-    4. Lists and filters Helm releases
-    5. Handles dry run mode
-    6. Manages user confirmation
-    7. Executes deletion if confirmed
+    2. Validates all inputs
+    3. Sets up logging configuration
+    4. Configures Kubernetes context
+    5. Lists and filters Helm releases
+    6. Handles dry run mode
+    7. Manages user confirmation
+    8. Executes deletion if confirmed
 
     Returns:
         int: Exit code (0 for success, 1 for failure)
     """
     args = parse_args()
 
-    # Initialize secret manager
-    secret_manager = SecretManager()
-
-    # Set up credential paths
-    kubeconfig_path = args.kubeconfig or os.path.expanduser("~/.kube/config")
-    helm_config_path = args.helm_config or os.path.expanduser("~/.helm")
-
     try:
+        # Validate all arguments
+        validate_args(args)
+
+        # Initialize secret manager
+        secret_manager = SecretManager()
+
+        # Set up credential paths
+        kubeconfig_path = args.kubeconfig or os.path.expanduser("~/.kube/config")
+        helm_config_path = args.helm_config or os.path.expanduser("~/.helm")
+
         # Validate credentials
         secret_manager.set_kubeconfig_path(kubeconfig_path)
         secret_manager.set_helm_config_path(helm_config_path)
@@ -248,6 +301,11 @@ def main() -> int:
             logger.info("Deletion cancelled by user")
             return 0
 
+    except ValidationError as e:
+        logger.error(
+            "Validation error", extra={"error": str(e), "context": e.context.__dict__ if e.context else None}
+        )
+        return 1
     except CleanupError as e:
         logger.error(
             "Error during cleanup", extra={"error": str(e), "context": e.context.__dict__ if e.context else None}
