@@ -10,16 +10,20 @@ The tool supports:
 - Interactive confirmation
 - Configurable logging
 - Multiple output formats
+- Secure credential management
 """
 
 import argparse
+import os
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from .exceptions import CleanupError
 from .helm import delete_helm_release, filter_old_pr_releases, list_helm_releases
 from .kubernetes import set_kubectl_context
 from .logging_config import get_logger, setup_logging
+from .secret_manager import SecretManager
 
 logger = get_logger(__name__)
 
@@ -47,6 +51,8 @@ def parse_args() -> argparse.Namespace:
             - rotate_when: When to rotate logs (S,M,H,D,W0-W6,midnight)
             - rotate_interval: Interval for time-based rotation
             - no_compress_logs: Disable log compression
+            - kubeconfig: Path to kubeconfig file
+            - helm_config: Path to Helm config directory
     """
     parser = argparse.ArgumentParser(description="Clean up old Helm releases in Kubernetes clusters")
     parser.add_argument(
@@ -120,60 +126,49 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rotate-interval",
         type=int,
-        default=1,
-        help="Interval for time-based rotation (default: 1)",
+        help="Interval for time-based rotation",
     )
     parser.add_argument(
         "--no-compress-logs",
         action="store_true",
         help="Disable log compression",
     )
+    parser.add_argument(
+        "--kubeconfig",
+        help="Path to kubeconfig file (default: ~/.kube/config)",
+    )
+    parser.add_argument(
+        "--helm-config",
+        help="Path to Helm config directory (default: ~/.helm)",
+    )
+
     return parser.parse_args()
 
 
 def confirm_deletion(releases: List[str], force: bool = False) -> bool:
-    """Ask for user confirmation before deletion.
-
-    This function displays the list of releases that will be deleted and prompts
-    the user for confirmation. It handles various forms of yes/no responses and
-    provides clear feedback.
+    """Prompt user for confirmation before deleting releases.
 
     Args:
-        releases: List of release names that will be deleted
-        force: If True, skip confirmation and return True
+        releases: List of release names to delete
+        force: If True, skip confirmation
 
     Returns:
-        bool: True if user confirms deletion or force is True, False if user cancels
-
-    Raises:
-        KeyboardInterrupt: If user interrupts the confirmation prompt
+        bool: True if deletion is confirmed, False otherwise
     """
-    if not releases:
-        return False
-
     if force:
-        logger.warning("Force flag enabled - skipping confirmation")
         return True
 
-    print("\n=== Release Cleanup Confirmation ===")
-    print(f"\nFound {len(releases)} releases to delete:")
-    for i, release in enumerate(releases, 1):
-        print(f"  {i}. {release}")
+    print("\nThe following releases will be deleted:")
+    for release in releases:
+        print(f"  - {release}")
 
-    print("\nWARNING: This action cannot be undone!")
-    print("Type 'delete' to confirm or 'cancel' to abort.")
-
-    try:
-        while True:
-            response = input("\nEnter your choice: ").lower().strip()
-            if response == "delete":
-                return True
-            if response == "cancel":
-                return False
-            print("Please type 'delete' to confirm or 'cancel' to abort")
-    except KeyboardInterrupt:
-        print("\nOperation cancelled by user")
-        return False
+    while True:
+        response = input("\nDo you want to continue? [y/N]: ").lower()
+        if response in ("y", "yes"):
+            return True
+        if response in ("n", "no", ""):
+            return False
+        print("Please answer 'y' or 'n'")
 
 
 def main() -> int:
@@ -193,20 +188,38 @@ def main() -> int:
     """
     args = parse_args()
 
-    # Setup logging
-    setup_logging(
-        log_file=args.log_file,
-        log_level="DEBUG" if args.verbose else "INFO",
-        json_format=not args.no_json_logging,
-        log_format=args.log_format,
-        max_bytes=args.max_log_size * 1024 * 1024 if args.max_log_size else None,
-        backup_count=args.log_backup_count,
-        rotate_when=args.rotate_when,
-        rotate_interval=args.rotate_interval,
-        compress_logs=not args.no_compress_logs,
-    )
+    # Initialize secret manager
+    secret_manager = SecretManager()
+
+    # Set up credential paths
+    kubeconfig_path = args.kubeconfig or os.path.expanduser("~/.kube/config")
+    helm_config_path = args.helm_config or os.path.expanduser("~/.helm")
 
     try:
+        # Validate credentials
+        secret_manager.set_kubeconfig_path(kubeconfig_path)
+        secret_manager.set_helm_config_path(helm_config_path)
+
+        # Setup logging
+        if args.log_file:
+            # Ensure log directory exists and is secure
+            log_dir = os.path.dirname(args.log_file)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+                secret_manager.secure_directory(log_dir)
+
+        setup_logging(
+            log_file=args.log_file,
+            log_level="DEBUG" if args.verbose else "INFO",
+            json_format=not args.no_json_logging,
+            log_format=args.log_format,
+            max_bytes=args.max_log_size * 1024 * 1024 if args.max_log_size else None,
+            backup_count=args.log_backup_count,
+            rotate_when=args.rotate_when,
+            rotate_interval=args.rotate_interval,
+            compress_logs=not args.no_compress_logs,
+        )
+
         # Set kubectl context
         set_kubectl_context(args.context)
 
