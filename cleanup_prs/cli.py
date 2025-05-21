@@ -13,6 +13,7 @@ The tool supports:
 - Secure credential management
 - Input validation
 - Batch processing for large numbers of releases
+- Performance monitoring
 """
 
 import argparse
@@ -25,6 +26,7 @@ from .exceptions import CleanupError, ValidationError
 from .helm import delete_helm_release, filter_old_pr_releases, list_helm_releases
 from .kubernetes import set_kubectl_context
 from .logging_config import get_logger, setup_logging
+from .performance import get_performance_monitor
 from .secret_manager import SecretManager
 from .validators import (
     validate_age_threshold,
@@ -65,6 +67,7 @@ def parse_args() -> argparse.Namespace:
             - helm_config: Path to Helm config directory
             - batch_size: Number of releases to process in each batch
             - max_workers: Maximum number of parallel workers
+            - show_performance: Show performance metrics at the end
     """
     parser = argparse.ArgumentParser(description="Clean up old Helm releases in Kubernetes clusters")
     parser.add_argument(
@@ -163,6 +166,11 @@ def parse_args() -> argparse.Namespace:
         "--max-workers",
         type=int,
         help="Maximum number of parallel workers (default: 4)",
+    )
+    parser.add_argument(
+        "--show-performance",
+        action="store_true",
+        help="Show performance metrics at the end",
     )
 
     return parser.parse_args()
@@ -266,6 +274,34 @@ def print_progress(current: int, total: int) -> None:
         print()  # New line after completion
 
 
+def print_performance_metrics() -> None:
+    """Print performance metrics summary."""
+    monitor = get_performance_monitor()
+    summary = monitor.get_operation_summary()
+
+    if not summary:
+        return
+
+    print("\nPerformance Metrics:")
+    print(f"Total Operations: {summary['total_operations']}")
+    print(f"Successful Operations: {summary['successful_operations']}")
+    print(f"Failed Operations: {summary['failed_operations']}")
+    print(f"Total Duration: {summary['total_duration']:.2f} seconds")
+    print(f"Average Duration: {summary['average_duration']:.2f} seconds")
+
+    print("\nOperation Details:")
+    for op in summary["operations"]:
+        print(f"\n{op['operation']}:")
+        print(f"  Duration: {op['duration']:.2f} seconds")
+        print(f"  Success: {op['success']}")
+        if op.get("error"):
+            print(f"  Error: {op['error']}")
+        if op.get("details"):
+            print("  Details:")
+            for key, value in op["details"].items():
+                print(f"    {key}: {value}")
+
+
 def main() -> int:
     """Main entry point for the CLI.
 
@@ -278,6 +314,7 @@ def main() -> int:
     6. Handles dry run mode
     7. Manages user confirmation
     8. Executes deletion if confirmed
+    9. Displays performance metrics if requested
 
     Returns:
         int: Exit code (0 for success, 1 for failure)
@@ -334,6 +371,8 @@ def main() -> int:
 
         if not old_releases:
             logger.info("No old releases found matching criteria")
+            if args.show_performance:
+                print_performance_metrics()
             return 0
 
         # Handle dry run
@@ -341,6 +380,8 @@ def main() -> int:
             logger.info("Dry run mode - would delete releases", extra={"releases": old_releases})
             for release in old_releases:
                 delete_helm_release(release, args.namespace, dry_run=True)
+            if args.show_performance:
+                print_performance_metrics()
             return 0
 
         # Confirm and delete
@@ -350,23 +391,33 @@ def main() -> int:
                 delete_helm_release(release, args.namespace, dry_run=False)
                 print_progress(i, total)
             logger.info("Successfully deleted all specified releases")
+            if args.show_performance:
+                print_performance_metrics()
             return 0
         else:
             logger.info("Deletion cancelled by user")
+            if args.show_performance:
+                print_performance_metrics()
             return 0
 
     except ValidationError as e:
         logger.error(
             "Validation error", extra={"error": str(e), "context": e.context.__dict__ if e.context else None}
         )
+        if args.show_performance:
+            print_performance_metrics()
         return 1
     except CleanupError as e:
         logger.error(
             "Error during cleanup", extra={"error": str(e), "context": e.context.__dict__ if e.context else None}
         )
+        if args.show_performance:
+            print_performance_metrics()
         return 1
     except Exception as e:
         logger.error("Unexpected error", extra={"error": str(e)})
+        if args.show_performance:
+            print_performance_metrics()
         return 1
 
 

@@ -38,4 +38,4 @@
 ## Performance & Scalability
 
 - [x] Optimize for large numbers of releases
-- [ ] Add performance monitoring
+- [x] Add performance monitoring
