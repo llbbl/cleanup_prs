@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
             - verbose: Enable verbose logging
             - no_json_logging: Disable JSON logging format
             - log_file: Path to log file
+            - log_format: Custom format string for logs
     """
     parser = argparse.ArgumentParser(description="Clean up old Helm releases in Kubernetes clusters")
     parser.add_argument(
@@ -89,6 +90,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--log-file",
         help="Path to log file",
+    )
+    parser.add_argument(
+        "--log-format",
+        help="Custom format string for logs. For JSON format, specify space-separated field names. "
+        "For text format, use standard Python logging format strings.",
     )
     return parser.parse_args()
 
@@ -160,6 +166,7 @@ def main() -> int:
         log_file=args.log_file,
         log_level="DEBUG" if args.verbose else "INFO",
         json_format=not args.no_json_logging,
+        log_format=args.log_format,
     )
 
     try:

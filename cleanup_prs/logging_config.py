@@ -5,7 +5,7 @@ import logging.handlers
 import os
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pythonjsonlogger import jsonlogger
 
@@ -24,6 +24,32 @@ class RequestIdFilter(logging.Filter):
 
 class CustomJsonFormatter(jsonlogger.JsonFormatter):
     """Custom JSON formatter with additional fields."""
+
+    def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None, style: str = "%", *args: Any, **kwargs: Any):
+        """Initialize the formatter with optional custom format.
+
+        Args:
+            fmt: Optional format string for JSON fields
+            datefmt: Optional date format string
+            style: Format style ('%', '{', or '$')
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+        """
+        super().__init__(fmt, datefmt, style, *args, **kwargs)
+        self._fields = self._parse_format_string(fmt) if fmt else None
+
+    def _parse_format_string(self, fmt: str) -> List[str]:
+        """Parse the format string to extract field names.
+
+        Args:
+            fmt: Format string containing field names
+
+        Returns:
+            List of field names found in the format string
+        """
+        if not fmt:
+            return []
+        return [f.strip() for f in fmt.split() if f.strip()]
 
     def add_fields(
         self,
@@ -55,12 +81,36 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         if hasattr(record, "extra"):
             log_record.update(record.extra)
 
+        # If specific fields were requested, filter the log record
+        if self._fields:
+            filtered_record = {}
+            for field in self._fields:
+                if field in log_record:
+                    filtered_record[field] = log_record[field]
+            log_record.clear()
+            log_record.update(filtered_record)
+
+
+class CustomTextFormatter(logging.Formatter):
+    """Custom text formatter with support for custom formats."""
+
+    def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None, style: str = "%"):
+        """Initialize the formatter with custom format.
+
+        Args:
+            fmt: Optional format string
+            datefmt: Optional date format string
+            style: Format style ('%', '{', or '$')
+        """
+        super().__init__(fmt, datefmt, style)
+
 
 def setup_logging(
     log_file_path: str,
     log_level: int = logging.INFO,
     json_format: bool = True,
     request_id: Optional[str] = None,
+    log_format: Optional[str] = None,
 ) -> logging.Logger:
     """Sets up logging with JSON formatting and file rotation.
 
@@ -69,6 +119,7 @@ def setup_logging(
         log_level: Logging level (default: INFO)
         json_format: Whether to use JSON formatting (default: True)
         request_id: Optional request ID to use (default: None, will generate one)
+        log_format: Optional custom format string for logs
 
     Returns:
         Configured logger instance
@@ -83,11 +134,11 @@ def setup_logging(
     # Create formatter
     if json_format:
         formatter = CustomJsonFormatter(
-            "%(timestamp)s %(level)s %(name)s %(module)s %(function)s " "%(line)s %(message)s"
+            fmt=log_format or "%(timestamp)s %(level)s %(name)s %(module)s %(function)s %(line)s %(message)s"
         )
     else:
-        formatter = logging.Formatter(
-            "%(asctime)s | %(levelname)s | %(request_id)s | " "%(module)s:%(funcName)s:%(lineno)d | %(message)s"
+        formatter = CustomTextFormatter(
+            fmt=log_format or "%(asctime)s | %(levelname)s | %(request_id)s | %(module)s:%(funcName)s:%(lineno)d | %(message)s"
         )
 
     # Add request ID filter
