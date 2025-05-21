@@ -2,8 +2,9 @@
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from .batch_processor import BatchProcessor, filter_release_by_age, process_release
 from .exceptions import (
     CleanupError,
     ErrorContext,
@@ -77,18 +78,25 @@ def list_helm_releases(namespace: str) -> List[Dict[str, Any]]:
         ) from e
 
 
-def filter_old_pr_releases(releases: List[Dict[str, Any]], prefix: str, days_threshold: int) -> List[str]:
-    """Filters releases based on name prefix and age.
+def filter_old_pr_releases(
+    releases: List[Dict[str, Any]],
+    prefix: str,
+    days_threshold: int,
+    batch_size: Optional[int] = None,
+    max_workers: Optional[int] = None,
+) -> List[str]:
+    """Filters releases based on name prefix and age using batch processing.
 
     Args:
         releases: List of Helm releases
         prefix: Prefix to match release names against
         days_threshold: Age threshold in days
+        batch_size: Optional batch size for processing
+        max_workers: Optional maximum number of parallel workers
 
     Returns:
         List of release names to delete
     """
-    old_releases = []
     now = datetime.now(timezone.utc)
     cutoff_time = now - timedelta(days=days_threshold)
 
@@ -98,57 +106,26 @@ def filter_old_pr_releases(releases: List[Dict[str, Any]], prefix: str, days_thr
             "prefix": prefix,
             "days_threshold": days_threshold,
             "cutoff_time": cutoff_time.isoformat(),
+            "total_releases": len(releases),
         },
     )
 
-    for release in releases:
-        release_name = release.get("name")
-        updated_str = release.get("updated")
+    # Create a filter function with the current parameters
+    def filter_func(release: Dict[str, Any]) -> bool:
+        return filter_release_by_age(release, prefix, cutoff_time)
 
-        if not release_name or not updated_str:
-            logger.warning("Skipping release with missing data", extra={"release": release})
-            continue
+    # Initialize batch processor
+    processor = BatchProcessor(
+        batch_size=batch_size,
+        max_workers=max_workers,
+    )
 
-        if release_name.startswith(prefix):
-            try:
-                updated_time = datetime.fromisoformat(updated_str)
-                if updated_time.tzinfo is None:
-                    logger.warning(
-                        "Release updated time lacks timezone",
-                        extra={
-                            "release": release_name,
-                            "updated_time": updated_str,
-                        },
-                    )
-                    updated_time = updated_time.replace(tzinfo=timezone.utc)
-                else:
-                    updated_time = updated_time.astimezone(timezone.utc)
-
-                if updated_time < cutoff_time:
-                    logger.debug(
-                        "Found old PR release",
-                        extra={
-                            "release": release_name,
-                            "updated_time": updated_time.isoformat(),
-                        },
-                    )
-                    old_releases.append(release_name)
-            except ValueError:
-                logger.warning(
-                    "Could not parse update timestamp",
-                    extra={
-                        "release": release_name,
-                        "updated_time": updated_str,
-                    },
-                )
-            except Exception as e:
-                logger.warning(
-                    "Error processing release",
-                    extra={
-                        "release": release_name,
-                        "error": str(e),
-                    },
-                )
+    # Process releases in batches
+    old_releases = processor.process_batches(
+        items=releases,
+        process_func=process_release,
+        filter_func=filter_func,
+    )
 
     logger.info(
         "Found releases matching criteria",

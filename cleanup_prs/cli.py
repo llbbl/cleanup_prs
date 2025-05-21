@@ -12,6 +12,7 @@ The tool supports:
 - Multiple output formats
 - Secure credential management
 - Input validation
+- Batch processing for large numbers of releases
 """
 
 import argparse
@@ -62,6 +63,8 @@ def parse_args() -> argparse.Namespace:
             - no_compress_logs: Disable log compression
             - kubeconfig: Path to kubeconfig file
             - helm_config: Path to Helm config directory
+            - batch_size: Number of releases to process in each batch
+            - max_workers: Maximum number of parallel workers
     """
     parser = argparse.ArgumentParser(description="Clean up old Helm releases in Kubernetes clusters")
     parser.add_argument(
@@ -150,6 +153,17 @@ def parse_args() -> argparse.Namespace:
         "--helm-config",
         help="Path to Helm config directory (default: ~/.helm)",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="Number of releases to process in each batch (default: 100)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        help="Maximum number of parallel workers (default: 4)",
+    )
 
     return parser.parse_args()
 
@@ -193,6 +207,25 @@ def validate_args(args: argparse.Namespace) -> None:
         rotate_interval=args.rotate_interval,
     )
 
+    # Validate batch processing settings
+    if args.batch_size is not None and args.batch_size < 1:
+        raise ValidationError(
+            "Batch size must be at least 1",
+            ErrorContext(
+                operation="validate_args",
+                details={"batch_size": args.batch_size},
+            ),
+        )
+
+    if args.max_workers is not None and args.max_workers < 1:
+        raise ValidationError(
+            "Maximum workers must be at least 1",
+            ErrorContext(
+                operation="validate_args",
+                details={"max_workers": args.max_workers},
+            ),
+        )
+
 
 def confirm_deletion(releases: List[str], force: bool = False) -> bool:
     """Prompt user for confirmation before deleting releases.
@@ -218,6 +251,19 @@ def confirm_deletion(releases: List[str], force: bool = False) -> bool:
         if response in ("n", "no", ""):
             return False
         print("Please answer 'y' or 'n'")
+
+
+def print_progress(current: int, total: int) -> None:
+    """Print progress information.
+
+    Args:
+        current: Current item number
+        total: Total number of items
+    """
+    percentage = (current / total) * 100
+    print(f"\rProcessing releases: {current}/{total} ({percentage:.1f}%)", end="", flush=True)
+    if current == total:
+        print()  # New line after completion
 
 
 def main() -> int:
@@ -278,7 +324,13 @@ def main() -> int:
 
         # List and filter releases
         releases = list_helm_releases(args.namespace)
-        old_releases = filter_old_pr_releases(releases, args.prefix, args.days)
+        old_releases = filter_old_pr_releases(
+            releases,
+            args.prefix,
+            args.days,
+            batch_size=args.batch_size,
+            max_workers=args.max_workers,
+        )
 
         if not old_releases:
             logger.info("No old releases found matching criteria")
@@ -293,8 +345,10 @@ def main() -> int:
 
         # Confirm and delete
         if confirm_deletion(old_releases, force=args.force):
-            for release in old_releases:
+            total = len(old_releases)
+            for i, release in enumerate(old_releases, 1):
                 delete_helm_release(release, args.namespace, dry_run=False)
+                print_progress(i, total)
             logger.info("Successfully deleted all specified releases")
             return 0
         else:
