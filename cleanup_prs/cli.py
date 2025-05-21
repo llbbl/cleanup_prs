@@ -42,6 +42,11 @@ def parse_args() -> argparse.Namespace:
             - no_json_logging: Disable JSON logging format
             - log_file: Path to log file
             - log_format: Custom format string for logs
+            - max_log_size: Maximum log file size in MB
+            - log_backup_count: Number of backup files to keep
+            - rotate_when: When to rotate logs (S,M,H,D,W0-W6,midnight)
+            - rotate_interval: Interval for time-based rotation
+            - no_compress_logs: Disable log compression
     """
     parser = argparse.ArgumentParser(description="Clean up old Helm releases in Kubernetes clusters")
     parser.add_argument(
@@ -95,6 +100,33 @@ def parse_args() -> argparse.Namespace:
         "--log-format",
         help="Custom format string for logs. For JSON format, specify space-separated field names. "
         "For text format, use standard Python logging format strings.",
+    )
+    parser.add_argument(
+        "--max-log-size",
+        type=int,
+        help="Maximum log file size in MB before rotation",
+    )
+    parser.add_argument(
+        "--log-backup-count",
+        type=int,
+        default=4,
+        help="Number of backup files to keep (default: 4)",
+    )
+    parser.add_argument(
+        "--rotate-when",
+        choices=["S", "M", "H", "D", "W0", "W1", "W2", "W3", "W4", "W5", "W6", "midnight"],
+        help="When to rotate logs (S=seconds, M=minutes, H=hours, D=days, W0-W6=weekday, midnight)",
+    )
+    parser.add_argument(
+        "--rotate-interval",
+        type=int,
+        default=1,
+        help="Interval for time-based rotation (default: 1)",
+    )
+    parser.add_argument(
+        "--no-compress-logs",
+        action="store_true",
+        help="Disable log compression",
     )
     return parser.parse_args()
 
@@ -167,6 +199,11 @@ def main() -> int:
         log_level="DEBUG" if args.verbose else "INFO",
         json_format=not args.no_json_logging,
         log_format=args.log_format,
+        max_bytes=args.max_log_size * 1024 * 1024 if args.max_log_size else None,
+        backup_count=args.log_backup_count,
+        rotate_when=args.rotate_when,
+        rotate_interval=args.rotate_interval,
+        compress_logs=not args.no_compress_logs,
     )
 
     try:

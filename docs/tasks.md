@@ -22,7 +22,7 @@
 - [x] Implement dry-run mode
 - [x] Add interactive confirmation
 - [x] Add support for custom log formats
-- [ ] Implement log rotation
+- [x] Implement log rotation
 
 ## Documentation & User Experience
 

@@ -105,12 +105,67 @@ class CustomTextFormatter(logging.Formatter):
         super().__init__(fmt, datefmt, style)
 
 
+def create_rotating_handler(
+    log_file_path: str,
+    max_bytes: Optional[int] = None,
+    backup_count: int = 4,
+    when: Optional[str] = None,
+    interval: int = 1,
+    compress: bool = True,
+) -> Union[logging.handlers.RotatingFileHandler, logging.handlers.TimedRotatingFileHandler]:
+    """Create a rotating file handler with the specified configuration.
+
+    Args:
+        log_file_path: Path to the log file
+        max_bytes: Maximum size in bytes before rotation (for size-based rotation)
+        backup_count: Number of backup files to keep
+        when: When to rotate ('S', 'M', 'H', 'D', 'W0'-'W6', 'midnight')
+        interval: Interval for time-based rotation
+        compress: Whether to compress rotated logs
+
+    Returns:
+        Configured rotating file handler
+
+    Raises:
+        ValueError: If neither max_bytes nor when is specified
+    """
+    if max_bytes is not None:
+        handler = logging.handlers.RotatingFileHandler(
+            log_file_path,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+    elif when is not None:
+        handler = logging.handlers.TimedRotatingFileHandler(
+            log_file_path,
+            when=when,
+            interval=interval,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+    else:
+        raise ValueError("Either max_bytes or when must be specified")
+
+    if compress and isinstance(handler, logging.handlers.TimedRotatingFileHandler):
+        handler.suffix = "%Y-%m-%d.gz"
+        handler.extMatch = r"^\d{4}-\d{2}-\d{2}\.gz$"
+        handler.rotator = lambda source, dest: os.system(f"gzip -c {source} > {dest} && rm {source}")
+
+    return handler
+
+
 def setup_logging(
     log_file_path: str,
     log_level: int = logging.INFO,
     json_format: bool = True,
     request_id: Optional[str] = None,
     log_format: Optional[str] = None,
+    max_bytes: Optional[int] = None,
+    backup_count: int = 4,
+    rotate_when: Optional[str] = None,
+    rotate_interval: int = 1,
+    compress_logs: bool = True,
 ) -> logging.Logger:
     """Sets up logging with JSON formatting and file rotation.
 
@@ -120,6 +175,11 @@ def setup_logging(
         json_format: Whether to use JSON formatting (default: True)
         request_id: Optional request ID to use (default: None, will generate one)
         log_format: Optional custom format string for logs
+        max_bytes: Maximum size in bytes before rotation (for size-based rotation)
+        backup_count: Number of backup files to keep
+        rotate_when: When to rotate ('S', 'M', 'H', 'D', 'W0'-'W6', 'midnight')
+        rotate_interval: Interval for time-based rotation
+        compress_logs: Whether to compress rotated logs
 
     Returns:
         Configured logger instance
@@ -147,13 +207,14 @@ def setup_logging(
         request_filter.request_id = request_id
     logger.addFilter(request_filter)
 
-    # File handler with weekly rotation
-    file_handler = logging.handlers.TimedRotatingFileHandler(
+    # Create rotating file handler
+    file_handler = create_rotating_handler(
         log_file_path,
-        when="W0",  # Rotate weekly on Monday
-        interval=1,
-        backupCount=4,
-        encoding="utf-8",
+        max_bytes=max_bytes,
+        backup_count=backup_count,
+        when=rotate_when,
+        interval=rotate_interval,
+        compress=compress_logs,
     )
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
